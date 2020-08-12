@@ -10,13 +10,23 @@ require get_theme_file_path( '/inc/search-route.php' );
  * WP REST API: WP JSON DATA
  */
 if (!function_exists('university_custom_rest')) {
+
     function university_custom_rest () {
+
         register_rest_field( 'post', 'authorName', array(
             'get_callback' => function () {
                 return get_the_author();
             }
         ) );
+
+        register_rest_field( 'note', 'userNoteCount', array(
+            'get_callback' => function () {
+                return count_user_posts(get_current_user_id(), 'note');
+            }
+        ) );
+
     }
+
 }
 
 add_action('rest_api_init', 'university_custom_rest');
@@ -68,13 +78,14 @@ if (!function_exists('university_files')) {
             wp_enqueue_script('main-university-js', 'http://localhost:3000/bundled.js', NULL, '1.0', true); # This only work in our local machine. Not on a production server.
         } else {
                 wp_enqueue_script('our-vendors-js', get_theme_file_uri('/bundled-assets/vendors~scripts.7d054c267a52fa2373d3.js'), NULL, '1.0', true);
-                wp_enqueue_script('main-university-js', get_theme_file_uri('/bundled-assets/scripts.aea3784fb848aa7a125b.js'), NULL, '1.0', true);
-                wp_enqueue_style('our-main-styles', get_theme_file_uri('/bundled-assets/styles.aea3784fb848aa7a125b.css'));
+                wp_enqueue_script('main-university-js', get_theme_file_uri('/bundled-assets/scripts.266e7905e2681f2c4c7d.js'), NULL, '1.0', true);
+                wp_enqueue_style('our-main-styles', get_theme_file_uri('/bundled-assets/styles.266e7905e2681f2c4c7d.css'));
             }  
         
         // Function that will output JavaScript Data intohtml source of the WebPage
         wp_localize_script('main-university-js', 'universityData', array(
-            'root_url' => get_site_url() // Return url of the WP installation.
+            'root_url' => get_site_url(), // Return url of the WP installation.
+            'nonce' => wp_create_nonce('wp_rest')
         ));
     }
 }
@@ -154,3 +165,99 @@ if (!function_exists('universityMapKey')) {
 }
 
 add_filter('acf/fields/google_map/api', 'universityMapKey');
+
+
+/**
+ * Redirect subscriber accounts out of admin onto homepage
+ */
+add_action('admin_init', 'redirectSubsToFrontend');
+
+if (!function_exists('redirectSubsToFrontend')) {
+    function redirectSubsToFrontend () {
+        $ourCurrentUser = wp_get_current_user();
+        if (count($ourCurrentUser->roles) == 1 AND $ourCurrentUser->roles[0] == 'subscriber' ) {
+            wp_redirect(site_url('/'));
+            exit;
+        }
+    }
+}
+
+/**
+ * Hide admin bar to subscriber accounts
+ */
+add_action('wp_loaded', 'noSubsAdminBar');
+
+if (!function_exists('noSubsAdminBar')) {
+    function noSubsAdminBar () {
+        $ourCurrentUser = wp_get_current_user();
+        if (count($ourCurrentUser->roles) == 1 AND $ourCurrentUser->roles[0] == 'subscriber' ) {
+            show_admin_bar(false);
+        }
+    }
+}
+
+
+/**
+ * CUSTOMIZE LOGIN SCREEN
+ */
+add_filter('login_headerurl', 'ourHeaderUrl');
+
+if (!function_exists('ourHeaderUrl')) {
+    function ourHeaderUrl () {
+        return esc_url(site_url('/'));
+    }
+}
+
+
+/**
+ * CUSTOMIZE LOGIN SCREEN
+ */
+add_filter('login_headertext', 'ourLoginTitle');
+
+if (!function_exists('ourLoginTitle')) {
+    function ourLoginTitle () {
+        return get_bloginfo('name');
+    }
+}
+
+
+/**
+ * LOADING CSS INTO OUR LOGIN URL
+ */
+add_action('login_enqueue_scripts', 'ourLoginCSS');
+
+if (!function_exists('ourLoginCSS')) {
+    function ourLoginCSS () {
+        wp_enqueue_style('custom-google-fonts', '//fonts.googleapis.com/css?family=Roboto+Condensed:300,300i,400,400i,700,700i|Roboto:100,300,400,400i,700,700i');
+        wp_enqueue_style('our-main-styles', get_theme_file_uri('/bundled-assets/styles.266e7905e2681f2c4c7d.css'));
+    }
+}
+
+
+/**
+ * Force note posts to be private
+ */
+add_filter('wp_insert_post_data', 'makeNotePrivate', 10, 2);
+
+if (!function_exists('makeNotePrivate')) {
+    function makeNotePrivate ($data, $postarr) {
+
+        if ($data['post_type'] == 'note') {
+            if (count_user_posts(get_current_user_id(), 'note') > 4 AND !$postarr['ID']) {
+                die('You have reached your note limit.');
+            }
+        }
+
+        if ($data['post_type'] == 'note') {
+            $data['post_title'] = sanitize_text_field( $data['post_title'] );
+            $data['post_content'] = sanitize_textarea_field( $data['post_content'] );
+        }
+
+        if ($data['post_type'] == 'note' AND $data['post_status'] != 'trash') {
+            $data['post_status'] = 'private';
+        }
+        
+        return $data;
+    }
+}
+
